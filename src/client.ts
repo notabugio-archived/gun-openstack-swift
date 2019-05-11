@@ -38,7 +38,7 @@ export class GunOpenStackSwiftClient {
 
   async getRaw(soul: string) {
     if (!soul) return null
-    const response = await fetch(`${this.config.url}/gun/nodes/${soul}`)
+    const response = await fetch(`${this.config.url}/gun/nodes/${escape(soul)}`)
     if (response.status === 404) return null
     if (response.status >= 400) throw new Error('Bad response from server')
 
@@ -91,7 +91,7 @@ export class GunOpenStackSwiftClient {
     }
 
     await fetch(
-      new Request(`${this.config.url}/gun/nodes/${soul}`, {
+      new Request(`${this.config.url}/gun/nodes/${escape(soul)}`, {
         method: 'PUT',
         headers: new Headers({
           'X-Auth-Token': this.config.token,
