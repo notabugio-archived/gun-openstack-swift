@@ -1,4 +1,4 @@
-import lmdb from 'node-lmdb'
+import 'isomorphic-fetch'
 
 export interface GunNode {
   _: {
@@ -16,48 +16,33 @@ export interface GunPut {
 }
 
 const DEFAULT_CONFIG = {
-  path: 'lmdb'
+  url: 'https://orbit.brightbox.com/v1/acc-xxx',
+  token: 'tokengoeshere'
 }
 
-export class GunLmdbClient {
+export class GunOpenStackSwiftClient {
   Gun: any
-  env: any
-  dbi: any
+  config: any
 
-  constructor(Gun: any, lmdbConfig = DEFAULT_CONFIG) {
+  constructor(Gun: any, config = DEFAULT_CONFIG) {
     this.Gun = Gun
-    this.env = new lmdb.Env()
-    this.env.open(lmdbConfig)
-    this.dbi = this.env.openDbi({
-      name: 'gun-nodes',
-      create: true
-    })
+    this.config = config
   }
 
   async get(soul: string) {
     if (!soul) return null
-    const txn = this.env.beginTxn()
-    try {
-      const data = this.deserialize(txn.getStringUnsafe(this.dbi, soul))
-      txn.commit()
-      return data
-    } catch (e) {
-      txn.abort()
-      throw e
-    }
+    const raw = await this.getRaw(soul)
+    if (!raw) return null
+    return this.deserialize(raw || '')
   }
 
   async getRaw(soul: string) {
     if (!soul) return null
-    const txn = this.env.beginTxn()
-    try {
-      const data = txn.getString(this.dbi, soul)
-      txn.commit()
-      return data || ''
-    } catch (e) {
-      txn.abort()
-      throw e
-    }
+    const response = await fetch(`${this.config.url}/gun/nodes/${soul}`)
+    if (response.status === 404) return null
+    if (response.status >= 400) throw new Error('Bad response from server')
+
+    return response.text()
   }
 
   async read(soul: string) {
@@ -83,33 +68,38 @@ export class GunLmdbClient {
   }
 
   deserialize(data: string) {
-    return JSON.parse(data)
+    try {
+      return JSON.parse(data)
+    } catch (e) {
+      return null
+    }
   }
 
   async writeNode(soul: string, nodeData: GunNode) {
     if (!soul) return
-    const txn = this.env.beginTxn()
     const nodeDataMeta = (nodeData && nodeData['_']) || {}
     const nodeDataState = nodeDataMeta['>'] || {}
 
-    try {
-      const existingData = txn.getStringUnsafe(this.dbi, soul)
-      const node = this.deserialize(existingData) || {}
-      const meta = (node['_'] = node['_'] || { '#': soul, '>': {} })
-      const state = (meta['>'] = meta['>'] || {})
+    const node = (await this.get(soul)) || {}
+    const meta = (node['_'] = node['_'] || { '#': soul, '>': {} })
+    const state = (meta['>'] = meta['>'] || {})
 
-      for (let key in nodeData) {
-        if (key === '_' || !(key in nodeDataState)) continue
-        node[key] = nodeData[key]
-        state[key] = nodeDataState[key]
-      }
-
-      txn.putString(this.dbi, soul, this.serialize(node))
-      txn.commit()
-    } catch (e) {
-      txn.abort()
-      throw e
+    for (let key in nodeData) {
+      if (key === '_' || !(key in nodeDataState)) continue
+      node[key] = nodeData[key]
+      state[key] = nodeDataState[key]
     }
+
+    await fetch(
+      new Request(`${this.config.url}/gun/nodes/${soul}`, {
+        method: 'PUT',
+        headers: new Headers({
+          'X-Auth-Token': this.config.token,
+          'Content-Type': 'application/json'
+        }),
+        body: this.serialize(node)
+      })
+    )
   }
 
   async write(put: GunPut) {
@@ -117,12 +107,10 @@ export class GunLmdbClient {
     for (let soul in put) await this.writeNode(soul, put[soul])
   }
 
-  close() {
-    this.dbi.close()
-    this.env.close()
-  }
+  // tslint:disable-next-line: no-empty
+  close() {}
 }
 
 export function createClient(Gun: any, options: any) {
-  return new GunLmdbClient(Gun, options)
+  return new GunOpenStackSwiftClient(Gun, options)
 }

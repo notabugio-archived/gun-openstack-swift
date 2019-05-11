@@ -1,4 +1,4 @@
-import { GunLmdbClient, GunPut } from './client'
+import { GunOpenStackSwiftClient, GunPut } from './client'
 
 interface GunGet {
   '#': string
@@ -9,7 +9,7 @@ interface GunGet {
 
 export const attachToGun = (Gun: any, options?: any) =>
   Gun.on('create', function(this: any, db: any) {
-    const lmdb = (Gun.lmdb = db.lmdb = new GunLmdbClient(Gun, options))
+    const lmdb = (Gun.lmdb = db.lmdb = new GunOpenStackSwiftClient(Gun, options))
 
     db.on('get', async function(this: any, request: GunGet) {
       this.to.next(request)
