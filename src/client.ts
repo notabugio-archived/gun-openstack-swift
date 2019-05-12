@@ -110,7 +110,7 @@ export class GunOpenStackSwiftClient {
       new Request(`${this.config.url}/gun/nodes/${escape(soul)}`, {
         method: 'PUT',
         headers: new Headers({
-          'X-Auth-Token': this.config.token,
+          'X-Auth-Token': this.token,
           'Content-Type': 'application/json'
         }),
         body: this.serialize(node)
