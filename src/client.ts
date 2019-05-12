@@ -1,5 +1,16 @@
 import 'isomorphic-fetch'
 
+const {
+  OS_AUTH_URL,
+  OS_USER_DOMAIN_NAME,
+  OS_USERNAME,
+  OS_PASSWORD,
+  OS_PROJECT_DOMAIN_NAME,
+  OS_PROJECT_NAME
+} = process.env
+
+console.log('env', process.env)
+
 export interface GunNode {
   _: {
     '#': string
@@ -17,16 +28,21 @@ export interface GunPut {
 
 const DEFAULT_CONFIG = {
   url: 'https://orbit.brightbox.com/v1/acc-xxx',
-  token: 'tokengoeshere'
+  authInterval: 1000 * 60 * 60 * 4
 }
 
 export class GunOpenStackSwiftClient {
   Gun: any
   config: any
+  token: string
 
   constructor(Gun: any, config = DEFAULT_CONFIG) {
+    const { authInterval = DEFAULT_CONFIG.authInterval } = config || {}
     this.Gun = Gun
     this.config = config
+    this.token = ''
+    this.auth().catch(error => console.error(error.stack || error))
+    setInterval(() => this.auth(), authInterval)
   }
 
   async get(soul: string) {
@@ -90,7 +106,7 @@ export class GunOpenStackSwiftClient {
       state[key] = nodeDataState[key]
     }
 
-    await fetch(
+    const response = await fetch(
       new Request(`${this.config.url}/gun/nodes/${escape(soul)}`, {
         method: 'PUT',
         headers: new Headers({
@@ -100,6 +116,49 @@ export class GunOpenStackSwiftClient {
         body: this.serialize(node)
       })
     )
+
+    if (response.status === 401) {
+      // TODO: auth and retry
+    }
+  }
+
+  async auth() {
+    const request = new Request(`${OS_AUTH_URL}/auth/tokens?nocatalog`, {
+      method: 'POST',
+      headers: new Headers({
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify({
+        auth: {
+          identity: {
+            methods: ['password'],
+            password: {
+              user: {
+                domain: {
+                  name: OS_USER_DOMAIN_NAME
+                },
+                name: OS_USERNAME,
+                password: OS_PASSWORD
+              }
+            }
+          },
+          scope: {
+            project: {
+              domain: {
+                name: OS_PROJECT_DOMAIN_NAME
+              },
+              name: OS_PROJECT_NAME
+            }
+          }
+        }
+      })
+    })
+    const response = await fetch(request)
+    if (response.status >= 400) throw new Error(`Unable to auth: ${response.status}`)
+    this.token = response.headers.get('X-Subject-Token') || ''
+    const data = await response.json()
+    console.log('successful login', data)
+    return data
   }
 
   async write(put: GunPut) {
