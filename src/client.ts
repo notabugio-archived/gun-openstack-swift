@@ -9,8 +9,6 @@ const {
   OS_PROJECT_NAME
 } = process.env
 
-console.log('env', process.env)
-
 export interface GunNode {
   _: {
     '#': string
